@@ -1,0 +1,46 @@
+proc Sector2(parent:Id,sector:Id,chamber1:Id,chamber2:Id) =
+ allow({cs43, cc34, ss32, rc23, rs54, sc45, 
+           move_state3, move_state4, move_phase3, move_phase4, ignored_command,
+           queue_messages, enter_then_clause, enter_else_clause,
+           skip_then_clause, start_initialization, end_initialization,
+           noop_statement},
+ comm({rs43|ss43 -> cs43, rc34|sc34 -> cc34},
+
+       Sector(sector, parent, [chamber1,chamber2]) || Chamber(chamber1,sector) || Chamber(chamber2, sector)
+ ));
+
+
+proc Wheel2 = 
+    allow({rs21,ss21, sc12,rc12, cs32,cc23, cs43,cc34, rs54, sc45, 
+           move_state2,move_state3,move_state4, move_phase2,move_phase3, move_phase4, ignored_command,
+           queue_messages, enter_then_clause, enter_else_clause,
+           skip_then_clause, start_initialization, end_initialization,
+           noop_statement},
+    comm({rs32|ss32 -> cs32, rc23 | sc23 -> cc23},
+
+    Wheel(1,2,[3,4]) || Sector2(2,3,5,6) || Sector2(2,4,7,8)
+    ));
+
+
+proc Wheel3 = 
+    allow({rs21,ss21, sc12,rc12,  cs32,cc23, cs43,cc34, rs54, sc45, 
+           move_state2,move_state3,move_state4, move_phase2,move_phase3, move_phase4, ignored_command,
+           queue_messages, enter_then_clause, enter_else_clause,
+           skip_then_clause, start_initialization, end_initialization,
+           noop_statement},
+    comm({rs32|ss32 -> cs32, rc23 | sc23 -> cc23},
+
+    Wheel(1,2,[3,4,9]) || Sector2(2,3,5,6) || Sector2(2,4,7,8) || Sector2(2,9,10,11)
+    ));
+
+
+proc Wheel4 = 
+    allow({rs21,ss21, sc12,rc12,  cs32,cc23, cs43,cc34, rs54, sc45, 
+           move_state2,move_state3,move_state4, move_phase2,move_phase3, move_phase4, ignored_command,
+           queue_messages, enter_then_clause, enter_else_clause,
+           skip_then_clause, start_initialization, end_initialization,
+           noop_statement},
+    comm({rs32|ss32 -> cs32, rc23 | sc23 -> cc23},
+
+    Wheel(1,2,[3,4,9,12]) || Sector2(2,3,5,6)   || Sector2(2,4,7,8) || Sector2(2,9,10,11) || Sector2(2,12,13,14)
+    ));

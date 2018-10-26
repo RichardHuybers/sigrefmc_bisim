@@ -1,0 +1,37 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  Randomized Leader Election in Ring  %%
+%%      idea based on DKR algorithm     %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+proc LeaderElect(x:Nat) = A1(x,true);
+
+     A1(x:Nat, bit:Bool) =
+       sum y:Nat. (y<N) -> s1(x,t(y,1,bit)). A2(x,y,bit);
+
+     A2(x:Nat, id:Nat, bit:Bool) =
+        sum i:Nat . sum h:Nat .
+        r1(modpred(x),t(i,h,bit)).
+	(h==N) -> leader.delta
+	<> s2(x,t(i,h+1,bit)). A3(x,id,bit,i)
+      + sum i:Nat. sum h:Nat.
+        r2(modpred(x),t(i,h,bit)). A4(x,id,bit,i);
+
+     A3(x:Nat,id:Nat,bit:Bool,i:Nat) =
+        sum i':Nat. sum h:Nat.
+        r2(modpred(x),t(i',h,bit)). A5(x,id,bit,i,i');
+
+     A4(x:Nat,id:Nat,bit:Bool,i:Nat) =
+        sum i':Nat. sum h:Nat. 
+        r1(modpred(x),t(i',h,bit)).
+	(h==N) -> leader.delta
+	<> s2(x,t(i',h+1,bit)). A5(x,id,bit,i',i);
+
+     A5(x:Nat,id:Nat,bit:Bool,i:Nat,i':Nat) =
+        (i'>i || id>i) -> P(x)
+	<> A1(x,!bit);
+
+     P(x:Nat) = 
+        sum i:Nat. sum h:Nat. sum b:Bool .
+        r1(modpred(x),t(i,h,b)). s1(x,t(i,h+1,b)). P(x)
+      + sum i:Nat. sum h:Nat. sum b:Bool .
+        r2(modpred(x),t(i,h,b)). s2(x,t(i,h+1,b)). P(x);

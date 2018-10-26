@@ -1,0 +1,10 @@
+Install mCRL2 and LTSmin.
+
+In the directory gen-lps, run gen_all.py.
+This uses mCRL2 to generate linearized LPS files from the specifications.
+
+Copy the generated LPS files (in gen-lps) to this directory.
+Run generate.py in this directory.
+This computes the LTS for each LPS as an LDD file, and then converts the LDD file to a BDD file.
+
+Copy the BDD files to the ../models directory

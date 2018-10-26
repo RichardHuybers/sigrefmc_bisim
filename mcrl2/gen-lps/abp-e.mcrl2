@@ -1,0 +1,2 @@
+Buffer = sum d:D . r1(d) . s4(d). Buffer ; 
+init Buffer ;

@@ -1,0 +1,4 @@
+% ltsmin needs at least two parameters
+proc Leader(x,y:Bool) = (x && y) -> leader.Leader(false,false);
+init Leader(true,true);
+

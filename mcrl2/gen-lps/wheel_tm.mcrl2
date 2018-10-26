@@ -1,0 +1,40 @@
+proc
+    % Model of a dumb RPC_Wheel_CLASS_TM that will simply order its children to switch on,
+    % off and standby. Additionally, it accepts state notifications.
+
+    % RPC_Wheel_CLASS_TM does not keep track of the state of its children, and may issue a
+    % C_ON even if all children are in the S_ON state.
+    RPC_Wheel_CLASS_TM(self: Id, chs: Children) =
+        % Issue a C_ON command.
+        sc12(self,id(head(chs)),C_ON).
+        sum s:State.(rs21(id(head(chs)),self,s)).
+        RPC_Wheel_CLASS_TM(self, tail(chs) <| head(chs) ) +
+
+        % Issue a C_OFF command.
+        sc12(self,id(head(chs)),C_OFF).
+        sum s:State.(rs21(id(head(chs)),self,s)).
+        RPC_Wheel_CLASS_TM(self, tail(chs) <| head(chs) ) +
+
+        % Issue a C_STANDBY command.
+        sc12(self,id(head(chs)),C_STANDBY).
+        sum s:State.(rs21(id(head(chs)),self,s)).
+        RPC_Wheel_CLASS_TM(self, tail(chs) <| head(chs) ) +
+
+        % Accept notifications.
+        sum id:Id, s:State.(rs21(id,self,s)).
+        RPC_Wheel_CLASS_TM(self, chs)
+;
+
+proc WheelTM_Wheel(chs:IdList) = 
+    allow({cs21,cc12, sc23, rs32, 
+           move_state2, move_phase2, ignored_command,
+           queue_messages, enter_then_clause, enter_else_clause,
+           skip_then_clause, start_initialization, end_initialization,
+           noop_statement},
+    comm({rs21|ss21 -> cs21, rc12|sc12 -> cc12},
+
+    RPC_Wheel_CLASS_TM(1, ids_to_children([2],RPC_Sector_CLASS))
+    ||
+    Wheel(1, 2, chs)
+    )
+    );

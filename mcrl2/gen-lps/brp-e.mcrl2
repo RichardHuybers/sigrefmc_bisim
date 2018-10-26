@@ -1,0 +1,18 @@
+% We took the specification from
+% Groote, van de Pol, "A Bounded Retransmission Protocol", AMAST 1996 (?)
+
+% parameters:
+% L = the length of the initial list
+% D = the sort of data elements
+
+proc
+X1 = sum l:List(D) . (#l <= L) -> r1(l). X2(l,e1);
+X2(l:List(D),b:Bit) =
+    tau. ((b==e1) -> X3(C_ind(l)) <> X4(C_ind(l)))
+  + tau. s4(head(l),I_ind(b,indl(l))). 
+      (last(l)) -> (tau. X3(I_ok) + tau. X3(I_dk))
+      	       <> (tau. X2(tail(l),e0) + tau. X4(I_nok));
+X3(c:Ind) = s1(c). X1;
+X4(c:Ind) = s1(c). s4(I_nok). X1;
+
+init X1;

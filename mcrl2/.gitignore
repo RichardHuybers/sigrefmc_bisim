@@ -1,0 +1,11 @@
+*.lps
+*.ldd
+*.bdd
+gen-lps/abp_*
+gen-lps/brp_*
+gen-lps/franklin_*
+gen-lps/swp_*
+gen-lps/onebit_*
+gen-lps/hesselink_*
+gen-lps/dkr_*
+gen-lps/lhc_*

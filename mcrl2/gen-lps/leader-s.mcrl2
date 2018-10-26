@@ -1,0 +1,7 @@
+init
+allow({c_s1,c_s2,c_r1,c_r2,leader},
+comm({ s1 | e1 -> c_s1,
+       s2 | e2 -> c_s2,
+       d1 | r1 -> c_r1,
+       d2 | r2 -> c_r2},
+  Leader));

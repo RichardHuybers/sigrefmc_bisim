@@ -1,0 +1,19 @@
+map append: DBuf # D -> DBuf;
+    first: DBuf -> D;
+    next: DBuf -> DBuf;
+    
+var l:DBuf;
+    d,e:D;
+
+eqn append([],d) = [d];
+    append(e |> l, d) = e |> append(l,d);
+    first(d|>l) = d;
+    next(d|>l) = l;
+
+% ltsmin needs two arguments
+
+proc Buffer(l:DBuf,b:Bool) =
+    (l != [] && (b || !b)) -> s4(first(l)). Buffer(next(l),true)
+  + (#l != 2*N) -> sum d:D . r1(d) . Buffer(append(l,d),false);
+
+init Buffer([],true);

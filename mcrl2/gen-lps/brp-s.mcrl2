@@ -1,0 +1,5 @@
+init
+   allow({c2,c3,c5,c6,c7,c8,c9,c10,i,r1,s1,s4},
+     comm({r2|s2->c2, r3|s3->c3, r5|s5->c5, r6|s6->c6, r7|s7->c7, s8|r8->c8, r9|s9->c9, r10|s10->c10 },
+       BRP
+   ));

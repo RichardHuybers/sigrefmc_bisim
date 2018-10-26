@@ -1,0 +1,174 @@
+sort
+
+    Phase = struct WhenPhase ?isWhenPhase | ActionPhase ?isActPhase;
+
+    ActPhaseArgs = struct actArgs(cq: CommandQueue, nrf: IdList, pc: Int, rsc: Bool);
+
+    Id = Nat;
+    IdList = List(Id);
+
+    Child = struct child(id:Id, state:State, ptype:PType, busy:Bool);
+    Children = List(Child);
+
+    ChildCommand = struct childcommand(id:Id, command:Command);
+    CommandQueue = List(ChildCommand);
+
+
+    PType = struct 
+     	    RPC_Sector_CLASS ? isRPC_Sector_CLASS 
+    	  | RPC_LBBLV_CLASS ? isRPC_LBBLV_CLASS 
+	  | RPC_Chamber_CLASS ? isRPC_Chamber_CLASS 
+	  | RPC_Wheel_CLASS ? isRPC_Wheel_CLASS 
+	  | RPC_HV_CLASS ? isRPC_HV_CLASS 
+	  | RPC_LV_CLASS ? isRPC_LV_CLASS 
+	  | RPC_T_CLASS ? isRPC_T_CLASS 
+	  | RPC_Wheel_CLASS_TM ? isRPC_Wheel_CLASS_TM;
+
+    State = struct S_FSM_UNINITIALIZED ? isS_FSM_UNINITIALIZED 
+	| S_OFF ? isS_OFF 
+	| S_ERROR ? isS_ERROR 
+	| S_TRIPPED ? isS_TRIPPED 
+	| S_RAMPING ? isS_RAMPING 
+	| S_STANDBY ? isS_STANDBY 
+	| S_ON ? isS_ON 
+	| S_RAMPING_DOWN ? isS_RAMPING_DOWN 
+	| S_RAMPING_UP ? isS_RAMPING_UP 
+	| S_OK ? isS_OK;
+
+    Command = struct C_STANDBY ? isC_STANDBY | C_OFF ? isC_OFF | C_ON ? isC_ON;
+
+map
+    % Returns whether or not a Child is in a certain State.
+    in_state: Child # State -> Bool;
+
+    % Check if child is in any of the states in the list.
+    in_any_of_states: Child # List(State) -> Bool;
+
+    % Returns whether or not at least one Child in Children is in a state in
+    % List(State).
+    any_in_state: Children # List(State) -> Bool;
+
+    % Returns whether or not every Child in Children is in a a state in
+    % List(State).
+    all_in_state: Children # List(State) -> Bool;
+
+    % Returns whether or not there is a Child with Id in Children.
+    is_child: Id # Children -> Bool;
+
+    % Returns the Children which have a certain PType.
+    filter_children: Children # PType -> Children;
+
+    % Accumulating helper function for filter_children.
+    filter_children_accu: Children # PType # Children -> Children;
+
+    % Given a Command and a Children list, create a new CommandQueue with an
+    % (id(Child), Command) tuple for every Child in Children.
+    send_command: Command # Children -> CommandQueue;
+
+    % Update the State of the Child with a certain Id in Children.
+    update_state: Id # State # Children -> Children;
+
+    % Update the Busy boolean of the Child with a certain Id in Children.
+    update_busy: Id # Bool # Children -> Children;
+
+    % Update the Busy boolean of all Children.
+    update_busy_all: Bool # Children -> Children;
+
+    % Remove the first occurrence of an Id from a list of Ids.
+    remove: Id # IdList -> IdList;
+
+    % Returns whether the children have all been initialized.
+    initialized: Children -> Bool;
+
+    % Returns the Ids of all Children.
+    children_to_ids: Children -> IdList;
+
+    % Returns the Children with the busy flag.
+    busy_children: Children -> Children;
+
+    % Change the pc attribute of ActPhaseArgs.
+    update_pc: ActPhaseArgs # Int -> ActPhaseArgs;
+
+    % Reset the action arguments when we move between the action phase and the
+    % when phase or vice versa.
+    reset: ActPhaseArgs -> ActPhaseArgs;
+
+    ids_to_children: IdList # PType -> Children;
+
+var
+    cq: CommandQueue;
+    chs,chs_accu: Children;
+    ch: Child;
+    id,id1: Id;
+    ids: IdList;
+    s,s1: State;
+    sl: List(State);
+    t,t1: PType;
+    cmd: Command;
+    b, b1, b2: Bool;
+    pc, pc1: Int;
+
+eqn
+    % See the map section for the intended behaviour of the functions.
+    in_state(child(id,s,t,b),s1) = s == s1;
+
+    in_any_of_states(ch,[]) = false;
+    in_any_of_states(ch,s|>sl) = in_state(ch,s) || in_any_of_states(ch,sl);
+
+    any_in_state([], sl) = false;
+    any_in_state(ch|> chs, sl) = in_any_of_states(ch,sl) || any_in_state(chs,sl);
+
+    all_in_state([], sl) = true;
+    all_in_state(ch|> chs, sl) = in_any_of_states(ch,sl) && all_in_state(chs,sl);
+
+    is_child(id, []) = false;
+    is_child(id, child(id1,s,t,b) |> chs) = id == id1 || is_child(id, chs);
+
+    filter_children(chs, t) = filter_children_accu(chs, t, []);
+
+    filter_children_accu([],t,chs_accu) = chs_accu;
+    filter_children_accu(child(id,s,t1,b) |> chs, t, chs_accu) =
+        if(t==t1,
+           filter_children_accu(chs, t, child(id,s,t,b) |> chs_accu),
+           filter_children_accu(chs, t, chs_accu));
+
+    send_command(cmd, []) = [];
+    send_command(cmd, child(id,s,t,b) |> chs) =
+        childcommand(id,cmd) |> send_command(cmd,chs);
+
+    update_state(id, s, []) = [];
+    update_state(id, s, child(id1,s1,t,b) |> chs) =
+        if(id==id1,
+           child(id1,s,t,b) |> chs,
+           child(id1,s1,t,b) |> update_state(id,s,chs));
+
+    update_busy(id, b, []) = [];
+    update_busy(id, b, child(id1,s,t,b1) |> chs) =
+        if(id==id1,
+           child(id1,s,t,b) |> chs,
+           child(id1,s,t,b1) |> update_busy(id,b,chs));
+
+    update_busy_all(b, []) = [];
+    update_busy_all(b, child(id,s,t,b1) |> chs) = child(id,s,t,b) |> update_busy_all(b, chs);
+
+    remove(id, []) = [];
+    remove(id, id1 |> ids) =
+      if (id == id1,
+        ids,
+        id1 |> remove(id, ids));
+
+    initialized(chs) = !any_in_state(chs, [S_FSM_UNINITIALIZED]);
+
+    children_to_ids([]) = [];
+    children_to_ids(child(id,s,t,b) |> chs) = id |> children_to_ids(chs);
+
+    busy_children([]) = [];
+    busy_children(child(id,s,t,true) |> chs) = child(id,s,t,true) |> busy_children(chs);
+    busy_children(child(id,s,t,false) |> chs) = busy_children(chs);
+
+    update_pc(actArgs(cq, ids, pc, b), pc1) = actArgs(cq, ids, pc1, b);
+
+    reset(actArgs(cq, ids, pc, b)) = actArgs([], [], 0, b);
+
+    ids_to_children([],t) = [];
+    ids_to_children(id |> ids, t) = child(id,S_FSM_UNINITIALIZED,t,false) |> ids_to_children(ids,t);

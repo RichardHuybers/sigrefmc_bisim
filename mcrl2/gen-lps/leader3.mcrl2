@@ -1,0 +1,7 @@
+Leader =
+    LeaderElect(0)
+ || LeaderElect(1)
+ || LeaderElect(2)
+ || Chan(0,[],[])
+ || Chan(1,[],[])
+ || Chan(2,[],[]);

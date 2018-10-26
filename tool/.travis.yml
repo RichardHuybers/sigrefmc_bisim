@@ -1,0 +1,76 @@
+sudo: false
+
+matrix:
+  include:
+  - os: linux
+    env: TOOLSET=gcc CC=gcc-4.8 CXX=g++-4.8 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="ON"
+    addons:
+      apt:
+        packages: ["gcc-4.8", "g++-4.8", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test"]
+  - os: linux
+    env: TOOLSET=gcc CC=gcc-4.9 CXX=g++-4.9 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="ON"
+    addons:
+      apt:
+        packages: ["gcc-4.9", "g++-4.9", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test"]
+  - os: linux
+    env: TOOLSET=gcc CC=gcc-5 CXX=g++-5 BUILD_TYPE="Debug" HWLOC="ON" SYLVAN_STATS="OFF"
+    addons:
+      apt:
+        packages: ["gcc-5", "g++-5", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test"]
+  - os: linux
+    env: TOOLSET=gcc CC=gcc-5 CXX=g++-5 BUILD_TYPE="Debug" HWLOC="ON" SYLVAN_STATS="ON"
+    addons:
+      apt:
+        packages: ["gcc-5", "g++-5", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test"]
+  - os: linux
+    env: TOOLSET=gcc CC=gcc-5 CXX=g++-5 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="ON"
+    addons:
+      apt:
+        packages: ["gcc-5", "g++-5", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test"]
+  - os: linux
+    env: TOOLSET=gcc CC=gcc-5 CXX=g++-5 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="OFF"
+    addons:
+      apt:
+        packages: ["gcc-5", "g++-5", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test"]
+  - os: linux
+    env: TOOLSET=clang CC=clang-3.7 CXX=clang++-3.7 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="ON"
+    addons:
+      apt:
+        packages: ["clang-3.7", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test", "llvm-toolchain-precise-3.7"]
+  - os: linux
+    env: TOOLSET=clang CC=clang-3.8 CXX=clang++-3.8 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="ON"
+    addons:
+      apt:
+        packages: ["clang-3.8", "libboost-dev", "libtinyxml-dev", "libgmp-dev", "cmake", "libhwloc-dev"]
+        sources: ["ubuntu-toolchain-r-test", "llvm-toolchain-precise-3.8"]
+  - os: osx
+    env: TOOLSET=clang CC=clang CXX=clang++ BUILD_TYPE="Debug" HWLOC="ON" SYLVAN_STATS="ON"
+  - os: osx
+    env: TOOLSET=clang CC=clang CXX=clang++ BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="OFF"
+  - os: osx
+    env: TOOLSET=gcc CC=gcc-5 CXX=g++-5 BUILD_TYPE="Debug" HWLOC="ON" SYLVAN_STATS="OFF"
+  - os: osx
+    env: TOOLSET=gcc CC=gcc-5 CXX=g++-5 BUILD_TYPE="Release" HWLOC="ON" SYLVAN_STATS="OFF"
+
+install:
+- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; brew install argp-standalone tinyxml homebrew/science/hwloc; fi
+- if [[ "$TRAVIS_OS_NAME" == "osx" && "$CC" == "gcc-5" ]]; then brew install homebrew/versions/gcc5; fi
+
+script:
+- ${CC} --version
+- ${CXX} --version
+- cmake . -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DUSE_HWLOC=${HWLOC} -DSYLVAN_STATS=${SYLVAN_STATS}
+- make -j 2
+
+notifications:
+  email: false
+
+branches:
+  only: master

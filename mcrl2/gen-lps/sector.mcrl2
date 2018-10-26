@@ -1,0 +1,1013 @@
+proc Sector(sector:Id, parent: Id, chambers: IdList)
+ = RPC_Sector_CLASS(sector, parent, S_OFF, ids_to_children(chambers,RPC_Chamber_CLASS),
+                     ActionPhase,actArgs([], [], 0, false));
+
+proc RPC_Sector_CLASS(self: Id, parent: Id, s: State, chs: Children, phase: Phase, aArgs: ActPhaseArgs) =
+    (
+    % ===========
+    % BEGIN STATE
+
+    % ------------------
+    % BEGIN WHEN CLAUSES
+
+    (
+    % BEGIN WHEN
+    ((isS_OFF(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(chs, [S_ERROR])) || (any_in_state(filter_children(chs, RPC_LBBLV_CLASS), [S_TRIPPED])))) ->
+    move_state3(self, S_ERROR).
+    RPC_Sector_CLASS(self, parent, S_ERROR, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_OFF(s)) && (isWhenPhase(phase)) &&
+     (any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_RAMPING]))) ->
+    move_state3(self, S_RAMPING).
+    RPC_Sector_CLASS(self, parent, S_RAMPING, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_OFF(s)) && (isWhenPhase(phase)) &&
+     (all_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_STANDBY]))) ->
+    move_state3(self, S_STANDBY).
+    RPC_Sector_CLASS(self, parent, S_STANDBY, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_OFF(s)) && (isWhenPhase(phase)) &&
+     (all_in_state(chs, [S_ON]))) ->
+    move_state3(self, S_ON).
+    RPC_Sector_CLASS(self, parent, S_ON, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_OFF(s)) && (isWhenPhase(phase)) &&
+     ((!(any_in_state(chs, [S_OFF]))) && (any_in_state(chs, [S_STANDBY])))) ->
+    move_state3(self, S_STANDBY).
+    RPC_Sector_CLASS(self, parent, S_STANDBY, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN FALLTHROUGH
+
+    (((isS_OFF(s)) && (isWhenPhase(phase))) ->
+    ss32(self, parent, s).
+    move_phase3(self, ActionPhase).
+    RPC_Sector_CLASS(self, parent, s, chs, ActionPhase, reset(aArgs)))
+
+    % END WHEN FALLTHROUGH
+    ))
+    ))
+    ))
+    ))
+    ))
+    ) +
+
+    % END WHEN CLAUSES
+    % ----------------
+
+    % --------------------
+    % BEGIN ACTION CLAUSES
+
+    % Note:
+    %% These were the old rules (before initial was removed from ActPhaseArgs):
+    %%  initial(aArgs) && pc(aArgs) == 0                        => no command received yet
+    %%  initial(aArgs) && pc(aArgs) != 0                        => command received, executing action clause
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) != []     => action clause executed, but still must send commands
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) == []     => action clause executed
+
+    %% These are the new rules:
+    % pc(aArgs) == 0                        => no command received yet
+    % pc(aArgs) > 0                         => command received, executing action clause
+    % pc(aArgs) == -1 && cq(aArgs) != []    => action clause executed, but still must send commands
+    % pc(aArgs) == -1 && cq(aArgs) == []    => action clause executed
+
+    %% Since the FSM language allows for an arbitrary amount of statements and an arbitrary amount of
+    %% (nested) if-statements, we cannot simply do a sequential translation. It is for this reason that
+    %% we use a label to identify the translation of every statement. After executing a statement,
+    %% a program counter is set to the label of the statement which should be executed next. There are
+    %% two special cases here:
+    %%   * Label 0, the clause selector. In the action phase, we always first have pc == 0. When we receive
+    %%     a command, the clause selector determines the label of the first statement of the action clause 
+    %%     that should handle the command. The program count is then set to this label.
+    %%   * Label -1, end of action. After executing an action, the program counter is set to -1 to signify
+    %%     that we should now empty the sendqueue and move to the when phase.
+
+    %% Examples can be found in the translation function of the if-statement.
+
+    % BEGIN INITIALIZATION CHECK
+
+    ((isS_OFF(s)) && (isActPhase(phase)) && (!(initialized(chs))) &&
+     (pc(aArgs) == 0) && (nrf(aArgs) == [])) ->
+        start_initialization(self).
+        RPC_Sector_CLASS(self, parent, s, chs, phase,
+                  actArgs([], children_to_ids(chs), 0, rsc(aArgs))) <>
+
+    % END INITIALIZATION CHECK
+
+    % BEGIN CLAUSE SELECTOR
+
+    ((initialized(chs)) ->
+    (
+    (((isS_OFF(s)) && (isActPhase(phase)) && (cq(aArgs) == []) && (pc(aArgs) == 0)) ->
+        sum c:Command.(
+           rc23(parent, self, c).
+           (isC_STANDBY(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 1)) <> (
+           (isC_OFF(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 3)) <> (
+           (isC_ON(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 4)) <> (
+           ss32(self, parent, s).
+    ignored_command(self, c).
+    RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, -1))))))))
+    )) +
+    % END CLAUSE SELECTOR
+
+    (
+    % BEGIN ACTION
+
+    (((isS_OFF(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 1) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_STANDBY,
+                                         chs), [],  2, rsc(aArgs)))))
+    % END STATEMENT DO
+    ) +
+     (
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 2) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         filter_children(chs, RPC_LBBLV_CLASS)), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_OFF(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 3) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_OFF,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_OFF(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 4) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    (delta))))))
+    ))
+
+    % END ACTION CLAUSES
+    % ------------------
+
+    % END STATE
+    % =========
+    ) +
+    (
+    % ===========
+    % BEGIN STATE
+
+    % ------------------
+    % BEGIN WHEN CLAUSES
+
+    (
+    % BEGIN WHEN
+    ((isS_STANDBY(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(chs, [S_ERROR])) || (any_in_state(filter_children(chs, RPC_LBBLV_CLASS), [S_TRIPPED])))) ->
+    move_state3(self, S_ERROR).
+    RPC_Sector_CLASS(self, parent, S_ERROR, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_STANDBY(s)) && (isWhenPhase(phase)) &&
+     (any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_RAMPING]))) ->
+    move_state3(self, S_RAMPING).
+    RPC_Sector_CLASS(self, parent, S_RAMPING, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_STANDBY(s)) && (isWhenPhase(phase)) &&
+     (all_in_state(chs, [S_ON]))) ->
+    move_state3(self, S_ON).
+    RPC_Sector_CLASS(self, parent, S_ON, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_STANDBY(s)) && (isWhenPhase(phase)) &&
+     (any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_OFF]))) ->
+    move_state3(self, S_OFF).
+    RPC_Sector_CLASS(self, parent, S_OFF, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN FALLTHROUGH
+
+    (((isS_STANDBY(s)) && (isWhenPhase(phase))) ->
+    ss32(self, parent, s).
+    move_phase3(self, ActionPhase).
+    RPC_Sector_CLASS(self, parent, s, chs, ActionPhase, reset(aArgs)))
+
+    % END WHEN FALLTHROUGH
+    ))
+    ))
+    ))
+    ))
+    ) +
+
+    % END WHEN CLAUSES
+    % ----------------
+
+    % --------------------
+    % BEGIN ACTION CLAUSES
+
+    % Note:
+    %% These were the old rules (before initial was removed from ActPhaseArgs):
+    %%  initial(aArgs) && pc(aArgs) == 0                        => no command received yet
+    %%  initial(aArgs) && pc(aArgs) != 0                        => command received, executing action clause
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) != []     => action clause executed, but still must send commands
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) == []     => action clause executed
+
+    %% These are the new rules:
+    % pc(aArgs) == 0                        => no command received yet
+    % pc(aArgs) > 0                         => command received, executing action clause
+    % pc(aArgs) == -1 && cq(aArgs) != []    => action clause executed, but still must send commands
+    % pc(aArgs) == -1 && cq(aArgs) == []    => action clause executed
+
+    %% Since the FSM language allows for an arbitrary amount of statements and an arbitrary amount of
+    %% (nested) if-statements, we cannot simply do a sequential translation. It is for this reason that
+    %% we use a label to identify the translation of every statement. After executing a statement,
+    %% a program counter is set to the label of the statement which should be executed next. There are
+    %% two special cases here:
+    %%   * Label 0, the clause selector. In the action phase, we always first have pc == 0. When we receive
+    %%     a command, the clause selector determines the label of the first statement of the action clause 
+    %%     that should handle the command. The program count is then set to this label.
+    %%   * Label -1, end of action. After executing an action, the program counter is set to -1 to signify
+    %%     that we should now empty the sendqueue and move to the when phase.
+
+    %% Examples can be found in the translation function of the if-statement.
+
+    % BEGIN INITIALIZATION CHECK
+
+    ((isS_STANDBY(s)) && (isActPhase(phase)) && (!(initialized(chs))) &&
+     (pc(aArgs) == 0) && (nrf(aArgs) == [])) ->
+        start_initialization(self).
+        RPC_Sector_CLASS(self, parent, s, chs, phase,
+                  actArgs([], children_to_ids(chs), 0, rsc(aArgs))) <>
+
+    % END INITIALIZATION CHECK
+
+    % BEGIN CLAUSE SELECTOR
+
+    ((initialized(chs)) ->
+    (
+    (((isS_STANDBY(s)) && (isActPhase(phase)) && (cq(aArgs) == []) && (pc(aArgs) == 0)) ->
+        sum c:Command.(
+           rc23(parent, self, c).
+           (isC_ON(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 1)) <> (
+           (isC_OFF(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 2)) <> (
+           (isC_STANDBY(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 3)) <> (
+           ss32(self, parent, s).
+    ignored_command(self, c).
+    RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, -1))))))))
+    )) +
+    % END CLAUSE SELECTOR
+
+    (
+    % BEGIN ACTION
+
+    (((isS_STANDBY(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 1) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_STANDBY(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 2) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_OFF,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_STANDBY(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 3) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_STANDBY,
+                                         chs), [],  4, rsc(aArgs)))))
+    % END STATEMENT DO
+    ) +
+     (
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 4) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         filter_children(chs, RPC_LBBLV_CLASS)), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    (delta))))))
+    ))
+
+    % END ACTION CLAUSES
+    % ------------------
+
+    % END STATE
+    % =========
+    ) +
+    (
+    % ===========
+    % BEGIN STATE
+
+    % ------------------
+    % BEGIN WHEN CLAUSES
+
+    (
+    % BEGIN WHEN
+    ((isS_ON(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(chs, [S_ERROR])) || (any_in_state(filter_children(chs, RPC_LBBLV_CLASS), [S_TRIPPED])))) ->
+    move_state3(self, S_ERROR).
+    RPC_Sector_CLASS(self, parent, S_ERROR, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_ON(s)) && (isWhenPhase(phase)) &&
+     (any_in_state(chs, [S_RAMPING]))) ->
+    move_state3(self, S_RAMPING).
+    RPC_Sector_CLASS(self, parent, S_RAMPING, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_ON(s)) && (isWhenPhase(phase)) &&
+     (any_in_state(chs, [S_OFF]))) ->
+    move_state3(self, S_OFF).
+    RPC_Sector_CLASS(self, parent, S_OFF, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_ON(s)) && (isWhenPhase(phase)) &&
+     (any_in_state(chs, [S_STANDBY]))) ->
+    move_state3(self, S_STANDBY).
+    RPC_Sector_CLASS(self, parent, S_STANDBY, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN FALLTHROUGH
+
+    (((isS_ON(s)) && (isWhenPhase(phase))) ->
+    ss32(self, parent, s).
+    move_phase3(self, ActionPhase).
+    RPC_Sector_CLASS(self, parent, s, chs, ActionPhase, reset(aArgs)))
+
+    % END WHEN FALLTHROUGH
+    ))
+    ))
+    ))
+    ))
+    ) +
+
+    % END WHEN CLAUSES
+    % ----------------
+
+    % --------------------
+    % BEGIN ACTION CLAUSES
+
+    % Note:
+    %% These were the old rules (before initial was removed from ActPhaseArgs):
+    %%  initial(aArgs) && pc(aArgs) == 0                        => no command received yet
+    %%  initial(aArgs) && pc(aArgs) != 0                        => command received, executing action clause
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) != []     => action clause executed, but still must send commands
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) == []     => action clause executed
+
+    %% These are the new rules:
+    % pc(aArgs) == 0                        => no command received yet
+    % pc(aArgs) > 0                         => command received, executing action clause
+    % pc(aArgs) == -1 && cq(aArgs) != []    => action clause executed, but still must send commands
+    % pc(aArgs) == -1 && cq(aArgs) == []    => action clause executed
+
+    %% Since the FSM language allows for an arbitrary amount of statements and an arbitrary amount of
+    %% (nested) if-statements, we cannot simply do a sequential translation. It is for this reason that
+    %% we use a label to identify the translation of every statement. After executing a statement,
+    %% a program counter is set to the label of the statement which should be executed next. There are
+    %% two special cases here:
+    %%   * Label 0, the clause selector. In the action phase, we always first have pc == 0. When we receive
+    %%     a command, the clause selector determines the label of the first statement of the action clause 
+    %%     that should handle the command. The program count is then set to this label.
+    %%   * Label -1, end of action. After executing an action, the program counter is set to -1 to signify
+    %%     that we should now empty the sendqueue and move to the when phase.
+
+    %% Examples can be found in the translation function of the if-statement.
+
+    % BEGIN INITIALIZATION CHECK
+
+    ((isS_ON(s)) && (isActPhase(phase)) && (!(initialized(chs))) &&
+     (pc(aArgs) == 0) && (nrf(aArgs) == [])) ->
+        start_initialization(self).
+        RPC_Sector_CLASS(self, parent, s, chs, phase,
+                  actArgs([], children_to_ids(chs), 0, rsc(aArgs))) <>
+
+    % END INITIALIZATION CHECK
+
+    % BEGIN CLAUSE SELECTOR
+
+    ((initialized(chs)) ->
+    (
+    (((isS_ON(s)) && (isActPhase(phase)) && (cq(aArgs) == []) && (pc(aArgs) == 0)) ->
+        sum c:Command.(
+           rc23(parent, self, c).
+           (isC_STANDBY(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 1)) <> (
+           (isC_OFF(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 3)) <> (
+           (isC_ON(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 4)) <> (
+           ss32(self, parent, s).
+    ignored_command(self, c).
+    RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, -1))))))))
+    )) +
+    % END CLAUSE SELECTOR
+
+    (
+    % BEGIN ACTION
+
+    (((isS_ON(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 1) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_STANDBY,
+                                         chs), [],  2, rsc(aArgs)))))
+    % END STATEMENT DO
+    ) +
+     (
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 2) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         filter_children(chs, RPC_LBBLV_CLASS)), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_ON(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 3) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_OFF,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_ON(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 4) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    (delta))))))
+    ))
+
+    % END ACTION CLAUSES
+    % ------------------
+
+    % END STATE
+    % =========
+    ) +
+    (
+    % ===========
+    % BEGIN STATE
+
+    % ------------------
+    % BEGIN WHEN CLAUSES
+
+    (
+    % BEGIN WHEN
+    ((isS_ERROR(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_RAMPING])) && (!(any_in_state(chs, [S_ERROR, S_TRIPPED]))))) ->
+    move_state3(self, S_RAMPING).
+    RPC_Sector_CLASS(self, parent, S_RAMPING, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_ERROR(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_OFF])) && (!(any_in_state(chs, [S_ERROR, S_TRIPPED]))))) ->
+    move_state3(self, S_OFF).
+    RPC_Sector_CLASS(self, parent, S_OFF, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_ERROR(s)) && (isWhenPhase(phase)) &&
+     (all_in_state(chs, [S_ON]))) ->
+    move_state3(self, S_ON).
+    RPC_Sector_CLASS(self, parent, S_ON, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_ERROR(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_STANDBY])) && (!(any_in_state(chs, [S_ERROR, S_TRIPPED]))))) ->
+    move_state3(self, S_STANDBY).
+    RPC_Sector_CLASS(self, parent, S_STANDBY, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN FALLTHROUGH
+
+    (((isS_ERROR(s)) && (isWhenPhase(phase))) ->
+    ss32(self, parent, s).
+    move_phase3(self, ActionPhase).
+    RPC_Sector_CLASS(self, parent, s, chs, ActionPhase, reset(aArgs)))
+
+    % END WHEN FALLTHROUGH
+    ))
+    ))
+    ))
+    ))
+    ) +
+
+    % END WHEN CLAUSES
+    % ----------------
+
+    % --------------------
+    % BEGIN ACTION CLAUSES
+
+    % Note:
+    %% These were the old rules (before initial was removed from ActPhaseArgs):
+    %%  initial(aArgs) && pc(aArgs) == 0                        => no command received yet
+    %%  initial(aArgs) && pc(aArgs) != 0                        => command received, executing action clause
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) != []     => action clause executed, but still must send commands
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) == []     => action clause executed
+
+    %% These are the new rules:
+    % pc(aArgs) == 0                        => no command received yet
+    % pc(aArgs) > 0                         => command received, executing action clause
+    % pc(aArgs) == -1 && cq(aArgs) != []    => action clause executed, but still must send commands
+    % pc(aArgs) == -1 && cq(aArgs) == []    => action clause executed
+
+    %% Since the FSM language allows for an arbitrary amount of statements and an arbitrary amount of
+    %% (nested) if-statements, we cannot simply do a sequential translation. It is for this reason that
+    %% we use a label to identify the translation of every statement. After executing a statement,
+    %% a program counter is set to the label of the statement which should be executed next. There are
+    %% two special cases here:
+    %%   * Label 0, the clause selector. In the action phase, we always first have pc == 0. When we receive
+    %%     a command, the clause selector determines the label of the first statement of the action clause 
+    %%     that should handle the command. The program count is then set to this label.
+    %%   * Label -1, end of action. After executing an action, the program counter is set to -1 to signify
+    %%     that we should now empty the sendqueue and move to the when phase.
+
+    %% Examples can be found in the translation function of the if-statement.
+
+    % BEGIN INITIALIZATION CHECK
+
+    ((isS_ERROR(s)) && (isActPhase(phase)) && (!(initialized(chs))) &&
+     (pc(aArgs) == 0) && (nrf(aArgs) == [])) ->
+        start_initialization(self).
+        RPC_Sector_CLASS(self, parent, s, chs, phase,
+                  actArgs([], children_to_ids(chs), 0, rsc(aArgs))) <>
+
+    % END INITIALIZATION CHECK
+
+    % BEGIN CLAUSE SELECTOR
+
+    ((initialized(chs)) ->
+    (
+    (((isS_ERROR(s)) && (isActPhase(phase)) && (cq(aArgs) == []) && (pc(aArgs) == 0)) ->
+        sum c:Command.(
+           rc23(parent, self, c).
+           (isC_ON(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 1)) <> (
+           (isC_STANDBY(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 2)) <> (
+           (isC_OFF(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 4)) <> (
+           ss32(self, parent, s).
+    ignored_command(self, c).
+    RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, -1))))))))
+    )) +
+    % END CLAUSE SELECTOR
+
+    (
+    % BEGIN ACTION
+
+    (((isS_ERROR(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 1) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_ERROR(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 2) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_STANDBY,
+                                         chs), [],  3, rsc(aArgs)))))
+    % END STATEMENT DO
+    ) +
+     (
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 3) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         filter_children(chs, RPC_LBBLV_CLASS)), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_ERROR(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 4) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_OFF,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    (delta))))))
+    ))
+
+    % END ACTION CLAUSES
+    % ------------------
+
+    % END STATE
+    % =========
+    ) +
+    (
+    % ===========
+    % BEGIN STATE
+
+    % ------------------
+    % BEGIN WHEN CLAUSES
+
+    (
+    % BEGIN WHEN
+    ((isS_RAMPING(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(chs, [S_ERROR])) || (any_in_state(filter_children(chs, RPC_LBBLV_CLASS), [S_TRIPPED])))) ->
+    move_state3(self, S_ERROR).
+    RPC_Sector_CLASS(self, parent, S_ERROR, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_RAMPING(s)) && (isWhenPhase(phase)) &&
+     ((any_in_state(chs, [S_OFF])) && (!(any_in_state(chs, [S_RAMPING]))))) ->
+    move_state3(self, S_OFF).
+    RPC_Sector_CLASS(self, parent, S_OFF, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_RAMPING(s)) && (isWhenPhase(phase)) &&
+     (all_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_STANDBY]))) ->
+    move_state3(self, S_STANDBY).
+    RPC_Sector_CLASS(self, parent, S_STANDBY, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_RAMPING(s)) && (isWhenPhase(phase)) &&
+     (all_in_state(chs, [S_ON]))) ->
+    move_state3(self, S_ON).
+    RPC_Sector_CLASS(self, parent, S_ON, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN
+    ((isS_RAMPING(s)) && (isWhenPhase(phase)) &&
+     ((!(any_in_state(chs, [S_RAMPING]))) && (any_in_state(filter_children(chs, RPC_Chamber_CLASS), [S_STANDBY])))) ->
+    move_state3(self, S_STANDBY).
+    RPC_Sector_CLASS(self, parent, S_STANDBY, chs, phase, aArgs) <>
+
+    % END WHEN
+    ((
+    % BEGIN WHEN FALLTHROUGH
+
+    (((isS_RAMPING(s)) && (isWhenPhase(phase))) ->
+    ss32(self, parent, s).
+    move_phase3(self, ActionPhase).
+    RPC_Sector_CLASS(self, parent, s, chs, ActionPhase, reset(aArgs)))
+
+    % END WHEN FALLTHROUGH
+    ))
+    ))
+    ))
+    ))
+    ))
+    ) +
+
+    % END WHEN CLAUSES
+    % ----------------
+
+    % --------------------
+    % BEGIN ACTION CLAUSES
+
+    % Note:
+    %% These were the old rules (before initial was removed from ActPhaseArgs):
+    %%  initial(aArgs) && pc(aArgs) == 0                        => no command received yet
+    %%  initial(aArgs) && pc(aArgs) != 0                        => command received, executing action clause
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) != []     => action clause executed, but still must send commands
+    %% !initial(aArgs) && pc(aArgs) == 0 && cq(aArgs) == []     => action clause executed
+
+    %% These are the new rules:
+    % pc(aArgs) == 0                        => no command received yet
+    % pc(aArgs) > 0                         => command received, executing action clause
+    % pc(aArgs) == -1 && cq(aArgs) != []    => action clause executed, but still must send commands
+    % pc(aArgs) == -1 && cq(aArgs) == []    => action clause executed
+
+    %% Since the FSM language allows for an arbitrary amount of statements and an arbitrary amount of
+    %% (nested) if-statements, we cannot simply do a sequential translation. It is for this reason that
+    %% we use a label to identify the translation of every statement. After executing a statement,
+    %% a program counter is set to the label of the statement which should be executed next. There are
+    %% two special cases here:
+    %%   * Label 0, the clause selector. In the action phase, we always first have pc == 0. When we receive
+    %%     a command, the clause selector determines the label of the first statement of the action clause 
+    %%     that should handle the command. The program count is then set to this label.
+    %%   * Label -1, end of action. After executing an action, the program counter is set to -1 to signify
+    %%     that we should now empty the sendqueue and move to the when phase.
+
+    %% Examples can be found in the translation function of the if-statement.
+
+    % BEGIN INITIALIZATION CHECK
+
+    ((isS_RAMPING(s)) && (isActPhase(phase)) && (!(initialized(chs))) &&
+     (pc(aArgs) == 0) && (nrf(aArgs) == [])) ->
+        start_initialization(self).
+        RPC_Sector_CLASS(self, parent, s, chs, phase,
+                  actArgs([], children_to_ids(chs), 0, rsc(aArgs))) <>
+
+    % END INITIALIZATION CHECK
+
+    % BEGIN CLAUSE SELECTOR
+
+    ((initialized(chs)) ->
+    (
+    (((isS_RAMPING(s)) && (isActPhase(phase)) && (cq(aArgs) == []) && (pc(aArgs) == 0)) ->
+        sum c:Command.(
+           rc23(parent, self, c).
+           (isC_STANDBY(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 1)) <> (
+           (isC_OFF(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 3)) <> (
+           (isC_ON(c) -> RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, 4)) <> (
+           ss32(self, parent, s).
+    ignored_command(self, c).
+    RPC_Sector_CLASS(self, parent, s, chs, phase, update_pc(aArgs, -1))))))))
+    )) +
+    % END CLAUSE SELECTOR
+
+    (
+    % BEGIN ACTION
+
+    (((isS_RAMPING(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 1) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_STANDBY,
+                                         chs), [],  2, rsc(aArgs)))))
+    % END STATEMENT DO
+    ) +
+     (
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 2) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         filter_children(chs, RPC_LBBLV_CLASS)), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_RAMPING(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 3) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_OFF,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    ((
+    % BEGIN ACTION
+
+    (((isS_RAMPING(s)) && (isActPhase(phase)) && (cq(aArgs) == [])) ->
+    ((
+    % BEGIN STATEMENT DO
+    ((pc(aArgs) == 4) ->
+         queue_messages(self).
+         (RPC_Sector_CLASS(self, parent, s, chs, phase,
+                    actArgs(send_command(C_ON,
+                                         chs), [],  -1, rsc(aArgs)))))
+    % END STATEMENT DO
+    ))) +
+
+    % END ACTION
+
+    (delta))))))
+    ))
+
+    % END ACTION CLAUSES
+    % ------------------
+
+    % END STATE
+    % =========
+    ) +
+    (
+    % BEGIN GENERIC CLAUSES (shared by all states)
+    % Whenever we are not sending a command to the children, a child may
+    % spontaneously change its state due to a hardware event and send its
+    % state upward. Such state-change messages are called notifications.
+
+    % Notifications can occur in the following cases:
+    %  (1) After initialization, while in the action phase:
+    %  (1.a) We have not received a command yet in this action phase.
+    %  (1.b) We are executing an action, or we finished executing an action but still have to send
+    %        some commands.
+    %  (2) During initialization.
+
+    % Note that this implies that we never receive notifications during the execution of the when phase (i) and
+    % we never receive notifcations directly after we finish sending the last command after executing an action (ii).
+    % The rationale behind this is as follows:
+    %  (i)  The execution of the when clauses is a noninteractive process: the system decides what the
+    %       new state is, based only on *local* information. Therefore, this process finishes almost instantly.
+    %       In the real system, notifications which happen to arrive during the when phase would be queued, but
+    %       we don't queue messages in our model. It is unlikely that any important behaviour is missed
+    %       due to this design decision.
+    %  (ii) After sending the last command, the model can move into the when phase. Moving to a new state
+    %       before handling this notification will almost certainly be closer to the real behaviour of the
+    %       system. We therefore disallow notifications at this point.
+
+    % (1.a) We have initialized and we have not yet received a command in this action phase.
+    % We now accept notifications.
+    sum id:Id.(sum s1:State.(((isActPhase(phase)) && (is_child(id, chs)) &&
+                             (pc(aArgs) == 0) && (initialized(chs))) ->
+       rs43(id, self, s1).
+       move_phase3(self, WhenPhase).
+       RPC_Sector_CLASS(self, parent, s, update_busy(id, false, update_state(id, s1, chs)), WhenPhase, reset(aArgs))))
+    +
+
+    % (1.b) We are in the middle of executing an action, or we finished executing and still have to send some
+    % commands. We accept notifications, but we don't move to
+    % the when phase, since we still must execute one or more statements. These semantics are valid
+    % assuming a child does not send more than one notifications during the execution of the same
+    % actions.
+    sum id:Id.(sum s1:State.(((isActPhase(phase)) && (is_child(id, chs)) &&
+           ((pc(aArgs) > 0) ||
+            ((pc(aArgs) == -1) && (cq(aArgs) != [])))) ->
+       rs43(id, self, s1).
+       RPC_Sector_CLASS(self, parent, s,
+                     update_busy(id,
+                                 false,
+                                 update_state(id, s1, chs)),
+                     phase, aArgs))) +
+
+
+    % Clause to send commands added by actions in the initialization phase. Note that
+    % we keep track of the children which have not yet responded in the nrf list.
+    ((isActPhase(phase)) && (cq(aArgs) != []) && (!(initialized(chs)))) ->
+        sc34(self, id(head(cq(aArgs))), command(head(cq(aArgs)))).
+            RPC_Sector_CLASS(self, parent, s,
+                          update_busy(id(head(cq(aArgs))), true, chs),
+                          phase,
+                          actArgs(tail(cq(aArgs)),
+                                  (id(head(cq(aArgs))))|>(nrf(aArgs)), pc(aArgs), rsc(aArgs))) +
+
+
+    % Clause to send commands added by actions after the initialization phase. Note that
+    % we don't keep track of the children which have not yet responded. Recepients are only
+    % marked busy and not added to the nrf list.
+    ((isActPhase(phase)) && (cq(aArgs) != []) && initialized(chs)) ->
+        sc34(self, id(head(cq(aArgs))), command(head(cq(aArgs)))).
+            RPC_Sector_CLASS(self, parent, s,
+                          update_busy(id(head(cq(aArgs))), true, chs),
+                          phase,
+                          actArgs(tail(cq(aArgs)), [], pc(aArgs), rsc(aArgs))) +
+
+
+    % (2) Clause to receive the new states from the children during initialization.
+    % Note that some
+    % children may spontaneously change state and send a notification. This
+    % may cause us to receive more than one message from a child while we
+    % wait for all children to respond.
+    % If a child sends two state messages, we will only consider the last
+    % state when we process the when clauses.
+    sum id:Id.(sum s1:State.(
+            ((isActPhase(phase)) && (cq(aArgs) == []) && (nrf(aArgs) != []) && (is_child(id, chs)) &&
+             (!(initialized(chs)))) ->
+                    rs43(id, self, s1).
+                    ((initialized(update_state(id,s1,chs))) ->
+                         end_initialization(self).
+                         RPC_Sector_CLASS(self, parent, s, update_state(id,s1,chs), phase,
+                                       actArgs(cq(aArgs), remove(id, nrf(aArgs)), -1, rsc(aArgs)
+                                       )) <>
+                         RPC_Sector_CLASS(self, parent, s, update_state(id,s1,chs), phase,
+                                       actArgs(cq(aArgs), remove(id, nrf(aArgs)), -1, rsc(aArgs)
+                                       ))))) +
+
+    % Go to the when phase whenever all children are initialized, we executed an action
+    % and there are no pending messages.
+    ((isActPhase(phase)) && (cq(aArgs) == []) && (initialized(chs)) && (pc(aArgs) == -1)) ->
+        move_phase3(self, WhenPhase).
+        RPC_Sector_CLASS(self, parent, s, chs, WhenPhase, reset(aArgs))
+
+    % END GENERIC CLAUSES
+    ); 

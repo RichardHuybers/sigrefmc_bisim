@@ -1,0 +1,23 @@
+sort DBuf = List(D);
+
+map append: DBuf # D -> DBuf;
+    first: DBuf -> D;
+    next: DBuf -> DBuf;
+    
+var l:DBuf;
+    d,e:D;
+
+eqn append([],d) = [d];
+    append(e |> l, d) = e |> append(l,d);
+    first(d|>l) = d;
+    next(d|>l) = l;
+
+proc Buffer1(l:DBuf) =
+    (l != []) -> sb(first(l)). Buffer1(next(l))
+  + (#l != 2) -> sum d:D . ra(d) . Buffer1(append(l,d));
+
+proc Buffer2(l:DBuf) =
+    (l != []) -> sd(first(l)). Buffer2(next(l))
+  + (#l != 2) -> sum d:D . rc(d) . Buffer2(append(l,d));
+
+init allow({ra,sb,rc,sd}, Buffer1([]) || Buffer2([])) ;

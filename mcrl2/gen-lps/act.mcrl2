@@ -1,0 +1,50 @@
+act
+i;
+    % Commands are sent between a sending process X and a receiving process Y.
+    % Examples:
+    %     rc(X,Y,cmd): receive command sent from X to Y; use in process Y.
+    %     sc(X,Y,cmd): send command from X to Y; use in process X.
+    %     cc(X,Y,cmd): communication between r(X,Y,cmd) and s(X,Y,cmd).
+    rc12,sc12,cc12: Id # Id # Command;
+    rc23,sc23,cc23: Id # Id # Command;
+    rc34,sc34,cc34: Id # Id # Command;
+    rc45,sc45,cc45: Id # Id # Command;
+
+    % Children will respond to a command by (eventually) sending their new state.
+    % The use of the following actions is analogous to the rc/sc/cc commands.
+    rs21,ss21,cs21: Id # Id # State;
+    rs32,ss32,cs32: Id # Id # State;
+    rs43,ss43,cs43: Id # Id # State;
+    rs54,ss54,cs54: Id # Id # State;
+
+
+    % Action identifying a move to a new State.
+    move_state2,move_state3,move_state4: Id # State;
+
+    % Action identifing a move to a new Phase.
+    move_phase2,move_phase3,move_phase4: Id # Phase;
+
+    % Action triggered when a command is ignored.
+    ignored_command: Id # Command;
+
+    % Action triggered when we queue one or more messages.
+    queue_messages: Id;
+
+    % Action triggered when we enter a then clause.
+    enter_then_clause: Id;
+
+    % Action triggered when we enter an else clause.
+    enter_else_clause: Id;
+
+    % Action triggered when we skip over a then block.
+    skip_then_clause: Id;
+
+    % Action triggered when we start initializing.
+    start_initialization: Id;
+
+    % Action triggered when we end initializing.
+    end_initialization: Id;
+
+    % Action triggered when we execute an action without statements.
+    noop_statement: Id;
+

@@ -1,0 +1,35 @@
+sort Triple = struct t(i:Nat,h:Nat,b:Bool);
+
+sort Multiset = List(Triple);
+
+map rmv: Triple # Multiset -> Multiset;
+    add: Triple # Multiset -> Multiset;
+    elt: Triple # Multiset -> Bool;
+var  ms, ms': Multiset;
+     t,t': Triple;
+eqn  rmv(t,[]) = [];
+     t==t' -> rmv(t,t' |> ms) =  ms;
+     t!=t' -> rmv(t,t' |> ms) =  t' |> rmv(t,ms);
+     add(t,[]) = [t];
+     t'<t  -> add(t,t'|>ms) = t' |> add(t,ms);
+     t<=t' -> add(t,t'|>ms) = t |> t' |> ms;
+     elt(t,[]) = false;
+     t < t' -> elt(t,t'|>ms)  = false;
+     elt(t,t |> ms) = true;
+     t'< t  -> elt(t,t'|>ms) = elt(t,ms);
+
+map  modpred: Nat -> Nat;
+var  m:Nat;
+eqn  m>0 -> modpred(m) = Int2Nat(m-1);
+     modpred(0) = Int2Nat(N - 1);
+
+act   d1, s1, c_s1, d2, s2, c_s2: Nat#Triple;
+      e1, r1, c_r1, e2, r2, c_r2: Nat#Triple;
+
+      leader;
+
+proc Chan(x:Nat,ms:Multiset,ms':Multiset) =
+     sum t:Triple. e1(x,t). Chan(x,add(t,ms),ms')
+   + sum t:Triple. e2(x,t). Chan(x,ms,add(t,ms'))
+   + sum t:Triple. elt(t,ms) -> d1(x,t). Chan(x,rmv(t,ms),ms')
+   + sum t:Triple. elt(t,ms') -> d2(x,t). Chan(x,ms,rmv(t,ms')) ;

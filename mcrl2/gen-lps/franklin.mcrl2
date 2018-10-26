@@ -1,0 +1,46 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  Randomized Leader Election in Ring  %%
+%%   idea based on Franklin algorithm   %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% parameters: N = Number of participants in the ring
+% parameters: L = Number of different identities used
+
+proc LeaderElect(x:Nat) = A1(x,true);
+
+%choose the identity and send two msgs in both directions
+
+     A1(x:Nat, bit:Bool) =
+         sum y:Nat. (y<L) -> s1(x,t(y,1,bit)). s2(modpred(x),t(y,1,bit)). A2(x,y,bit);
+
+%rcv msg from either left or right neighbour
+
+    A2(x:Nat, id:Nat, bit:Bool) =
+        sum i:Nat. sum h:Nat. r1(modpred(x),t(i,h,bit)).
+	(h==N) -> leader.delta <> A3(x,id,bit,i) %left
+      + sum i':Nat. sum h':Nat. r2(x,t(i',h',bit)).
+        (h'==N) -> leader.delta <> A4(x,id,bit,i'); %right
+
+%rcv msg from right neighbour
+
+    A3(x:Nat,id:Nat,bit:Bool,i:Nat) =
+        sum i':Nat. sum h':Nat. r2(x,t(i',h',bit)).
+       	(h'==N) -> leader.delta <> A5(x,id,bit,i,i');
+
+%rcv msg from left neighbour
+
+    A4(x:Nat,id:Nat,bit:Bool,i':Nat) =
+        sum i:Nat. sum h:Nat. r1(modpred(x),t(i,h,bit)).
+        (h==N) -> leader.delta <> A5(x,id,bit,i,i');
+
+%decide and move to the next decision round
+
+    A5(x:Nat,id:Nat,bit:Bool,i:Nat,i':Nat) =
+        (i'>id || i>id) -> P(x) <> A1(x,!bit);
+
+% go into passive mode
+    P(x:Nat) = 
+        sum i:Nat. sum h:Nat. sum b:Bool.
+        r1(modpred(x),t(i,h,b)). s1(x,t(i,h+1,b)).P(x)
+      + sum i:Nat. sum h:Nat. sum b:Bool.
+        r2(x,t(i,h,b)).s2(modpred(x),t(i,h+1,b)).P(x);
